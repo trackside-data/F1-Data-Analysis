@@ -3,6 +3,8 @@ from datetime import datetime
 import fastf1
 import pandas as pd
 
+import os
+os.makedirs('cache', exist_ok=True)
 fastf1.Cache.enable_cache('cache')
 
 st.title("Prediction Helper")

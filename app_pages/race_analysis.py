@@ -1,11 +1,13 @@
 import streamlit as st
 from datetime import datetime
+import os
 import fastf1
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import pandas as pd
 import decimal
 
+os.makedirs('cache', exist_ok=True)
 fastf1.Cache.enable_cache('cache')
 
 st.title("F1 Driver Season Performance Dashboard")
@@ -33,7 +35,11 @@ def load_drivers(year, race):
     return drivers
 
 with st.spinner(f"Loading drivers for {race} {year}..."):
-    driver_list = load_drivers(year, race)
+    try:
+        driver_list = load_drivers(year, race)
+    except Exception:
+        st.error("Data couldn't be loaded for this selection right now. This can happen on first load — try refreshing the page or picking a different race.")
+        st.stop()
 
 driver = st.sidebar.selectbox("Select a driver", driver_list, key="race_driver_select")
 
@@ -45,7 +51,11 @@ def load_laps(year, race, driver):
     return laps
 
 with st.spinner(f"Loading lap times for {driver}..."):
-    laps = load_laps(year, race, driver)
+    try:
+        laps = load_laps(year, race, driver)
+    except Exception:
+        st.error("Data couldn't be loaded for this selection right now. This can happen on first load — try refreshing the page or picking a different driver/race.")
+        st.stop()
 
 compound_colors = {
     'HYPERSOFT': '#FF1493',
@@ -271,7 +281,11 @@ with tab4:
         return session.laps
 
     with st.spinner("Loading full race data for gap comparison..."):
-        all_laps = load_all_laps(year, race)
+        try:
+            all_laps = load_all_laps(year, race)
+        except Exception:
+            st.error("Data couldn't be loaded for this selection right now. Try refreshing the page.")
+            st.stop()
 
     @st.cache_data
     def get_race_winner(year, race):

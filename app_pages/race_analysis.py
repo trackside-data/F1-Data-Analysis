@@ -43,21 +43,12 @@ with st.spinner(f"Loading drivers for {race} {year}..."):
 
 driver = st.sidebar.selectbox("Select a driver", driver_list, key="race_driver_select")
 
-import time
-
 @st.cache_data
 def load_laps(year, race, driver):
-    last_error = None
-    for attempt in range(3):
-        try:
-            session = fastf1.get_session(year, race, 'R')
-            session.load(telemetry=False, weather=False, messages=False)
-            laps = session.laps.pick_drivers(driver)
-            return laps
-        except Exception as e:
-            last_error = e
-            time.sleep(2)
-    raise last_error
+    session = fastf1.get_session(year, race, 'R')
+    session.load(telemetry=False, weather=False, messages=False)
+    laps = session.laps.pick_drivers(driver)
+    return laps
 
 with st.spinner(f"Loading lap times for {driver}..."):
     try:
@@ -195,62 +186,51 @@ with tab3:
     if len(driver2_options) > 0:
         driver2 = st.selectbox("Compare against", driver2_options, key="race_driver2_select")
 
-        @st.cache_data
-        def load_telemetry_comparison(year, race, driver1, driver2):
-            session = fastf1.get_session(year, race, 'R')
-            session.load(telemetry=True, weather=False, messages=False)
+        def find_precomputed_file(year, race, driver1, driver2):
+            race_clean = race.replace(' ', '_').replace('Grand_Prix', '').strip('_')
+            possible_names = [
+                f"precomputed_data/{year}_{race_clean}_{driver1}_vs_{driver2}.csv",
+                f"precomputed_data/{year}_{race_clean}_{driver2}_vs_{driver1}.csv",
+            ]
+            for name in possible_names:
+                if os.path.exists(name):
+                    first_driver_in_file = name.split('/')[-1].split('_vs_')[0].split('_')[-1]
+                    return name, first_driver_in_file
+            return None, None
 
-            lap1 = session.laps.pick_drivers(driver1).pick_fastest()
-            lap2 = session.laps.pick_drivers(driver2).pick_fastest()
+        precomputed_file, first_driver_in_file = find_precomputed_file(year, race, driver, driver2)
 
-            tel1 = lap1.get_telemetry().add_distance()
-            tel2 = lap2.get_telemetry().add_distance()
+        if precomputed_file:
+            st.caption("Using precomputed data for faster, more reliable loading.")
 
-            num_minisectors = 25
-            total_distance = tel1['Distance'].max()
-            minisector_length = total_distance / num_minisectors
+            tel1 = pd.read_csv(precomputed_file)
+            speeds_file = precomputed_file.replace('.csv', '_speeds.csv')
+            comparison = pd.read_csv(speeds_file, index_col=0)
 
-            tel1['Minisector'] = (tel1['Distance'] // minisector_length).astype(int)
-            tel2['Minisector'] = (tel2['Distance'] // minisector_length).astype(int)
-
-            avg_speed1 = tel1.groupby('Minisector')['Speed'].mean()
-            avg_speed2 = tel2.groupby('Minisector')['Speed'].mean()
-
-            comparison = pd.DataFrame({
-                driver1: avg_speed1,
-                driver2: avg_speed2
-            })
-            comparison['Fastest'] = comparison.idxmax(axis=1)
-
-            tel1['Fastest'] = tel1['Minisector'].map(comparison['Fastest'])
-
-            return tel1, comparison
-
-        try:
-            with st.spinner(f"Loading telemetry for {driver} vs {driver2}..."):
-                tel1, comparison = load_telemetry_comparison(year, race, driver, driver2)
+            actual_driver1 = first_driver_in_file
+            actual_driver2 = driver2 if actual_driver1 == driver else driver
 
             fig2 = go.Figure()
-            colors = {driver: '#00D2FF', driver2: '#E10600'}
+            colors = {actual_driver1: '#00D2FF', actual_driver2: '#E10600'}
 
             for minisector_num in sorted(tel1['Minisector'].unique()):
                 segment = tel1[tel1['Minisector'] == minisector_num]
                 fastest_driver = comparison.loc[minisector_num, 'Fastest']
-                speed1 = comparison.loc[minisector_num, driver]
-                speed2 = comparison.loc[minisector_num, driver2]
+                speed1 = comparison.loc[minisector_num, actual_driver1]
+                speed2 = comparison.loc[minisector_num, actual_driver2]
 
                 hover_text = (
                     f"Minisector {minisector_num}<br>"
                     f"Fastest: {fastest_driver}<br>"
-                    f"{driver}: {speed1:.1f} km/h<br>"
-                    f"{driver2}: {speed2:.1f} km/h"
+                    f"{actual_driver1}: {speed1:.1f} km/h<br>"
+                    f"{actual_driver2}: {speed2:.1f} km/h"
                 )
 
                 fig2.add_trace(go.Scatter(
                     x=segment['X'],
                     y=segment['Y'],
                     mode='lines',
-                    line=dict(color=colors[fastest_driver], width=4),
+                    line=dict(color=colors.get(fastest_driver, 'gray'), width=4),
                     showlegend=False,
                     hovertext=hover_text,
                     hoverinfo='text'
@@ -268,15 +248,98 @@ with tab3:
                 template='plotly_dark',
                 paper_bgcolor=BG_COLOR,
                 plot_bgcolor=BG_COLOR,
-                title=f"Track Dominance: {driver} vs {driver2} - {race} {year}",
+                title=f"Track Dominance: {actual_driver1} vs {actual_driver2} - {race} {year}",
                 xaxis_title="X position",
                 yaxis_title="Y position",
                 yaxis_scaleanchor="x"
             )
 
             st.plotly_chart(fig2)
-        except Exception:
-            st.write("Telemetry data isn't available for this race/driver combination. Try a different race or driver pair.")
+        else:
+            st.info("This exact driver/race combination isn't precomputed yet. Live telemetry loading may be slow or unavailable depending on where this app is hosted.")
+
+            @st.cache_data
+            def load_telemetry_comparison(year, race, driver1, driver2):
+                session = fastf1.get_session(year, race, 'R')
+                session.load(telemetry=True, weather=False, messages=False)
+
+                lap1 = session.laps.pick_drivers(driver1).pick_fastest()
+                lap2 = session.laps.pick_drivers(driver2).pick_fastest()
+
+                tel1 = lap1.get_telemetry().add_distance()
+                tel2 = lap2.get_telemetry().add_distance()
+
+                num_minisectors = 25
+                total_distance = tel1['Distance'].max()
+                minisector_length = total_distance / num_minisectors
+
+                tel1['Minisector'] = (tel1['Distance'] // minisector_length).astype(int)
+                tel2['Minisector'] = (tel2['Distance'] // minisector_length).astype(int)
+
+                avg_speed1 = tel1.groupby('Minisector')['Speed'].mean()
+                avg_speed2 = tel2.groupby('Minisector')['Speed'].mean()
+
+                comparison = pd.DataFrame({
+                    driver1: avg_speed1,
+                    driver2: avg_speed2
+                })
+                comparison['Fastest'] = comparison.idxmax(axis=1)
+
+                tel1['Fastest'] = tel1['Minisector'].map(comparison['Fastest'])
+
+                return tel1, comparison
+
+            try:
+                with st.spinner(f"Loading telemetry for {driver} vs {driver2}..."):
+                    tel1, comparison = load_telemetry_comparison(year, race, driver, driver2)
+
+                fig2 = go.Figure()
+                colors = {driver: '#00D2FF', driver2: '#E10600'}
+
+                for minisector_num in sorted(tel1['Minisector'].unique()):
+                    segment = tel1[tel1['Minisector'] == minisector_num]
+                    fastest_driver = comparison.loc[minisector_num, 'Fastest']
+                    speed1 = comparison.loc[minisector_num, driver]
+                    speed2 = comparison.loc[minisector_num, driver2]
+
+                    hover_text = (
+                        f"Minisector {minisector_num}<br>"
+                        f"Fastest: {fastest_driver}<br>"
+                        f"{driver}: {speed1:.1f} km/h<br>"
+                        f"{driver2}: {speed2:.1f} km/h"
+                    )
+
+                    fig2.add_trace(go.Scatter(
+                        x=segment['X'],
+                        y=segment['Y'],
+                        mode='lines',
+                        line=dict(color=colors[fastest_driver], width=4),
+                        showlegend=False,
+                        hovertext=hover_text,
+                        hoverinfo='text'
+                    ))
+
+                for driver_name, color in colors.items():
+                    fig2.add_trace(go.Scatter(
+                        x=[None], y=[None],
+                        mode='lines',
+                        line=dict(color=color, width=4),
+                        name=driver_name
+                    ))
+
+                fig2.update_layout(
+                    template='plotly_dark',
+                    paper_bgcolor=BG_COLOR,
+                    plot_bgcolor=BG_COLOR,
+                    title=f"Track Dominance: {driver} vs {driver2} - {race} {year}",
+                    xaxis_title="X position",
+                    yaxis_title="Y position",
+                    yaxis_scaleanchor="x"
+                )
+
+                st.plotly_chart(fig2)
+            except Exception:
+                st.write("Telemetry data isn't available for this race/driver combination. Try a different race or driver pair.")
     else:
         st.write("Need at least two drivers in this race to compare.")
 

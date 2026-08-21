@@ -43,12 +43,21 @@ with st.spinner(f"Loading drivers for {race} {year}..."):
 
 driver = st.sidebar.selectbox("Select a driver", driver_list, key="race_driver_select")
 
+import time
+
 @st.cache_data
 def load_laps(year, race, driver):
-    session = fastf1.get_session(year, race, 'R')
-    session.load(telemetry=False, weather=False, messages=False)
-    laps = session.laps.pick_drivers(driver)
-    return laps
+    last_error = None
+    for attempt in range(3):
+        try:
+            session = fastf1.get_session(year, race, 'R')
+            session.load(telemetry=False, weather=False, messages=False)
+            laps = session.laps.pick_drivers(driver)
+            return laps
+        except Exception as e:
+            last_error = e
+            time.sleep(2)
+    raise last_error
 
 with st.spinner(f"Loading lap times for {driver}..."):
     try:

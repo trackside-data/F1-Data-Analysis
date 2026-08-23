@@ -45,6 +45,17 @@ driver = st.sidebar.selectbox("Select a driver", driver_list, key="race_driver_s
 
 @st.cache_data
 def load_laps(year, race, driver):
+    race_clean = race.replace(' ', '_').replace('Grand_Prix', '').strip('_')
+    precomputed_path = f"precomputed_laps/{year}_{race_clean}_laps.csv"
+
+    if os.path.exists(precomputed_path):
+        all_laps = pd.read_csv(precomputed_path)
+        all_laps['LapTime'] = pd.to_timedelta(all_laps['LapTime'])
+        all_laps['PitInTime'] = pd.to_timedelta(all_laps['PitInTime'])
+        all_laps['PitOutTime'] = pd.to_timedelta(all_laps['PitOutTime'])
+        laps = all_laps[all_laps['Driver'] == driver]
+        return fastf1.core.Laps(laps)
+
     session = fastf1.get_session(year, race, 'R')
     session.load(telemetry=False, weather=False, messages=False)
     laps = session.laps.pick_drivers(driver)
@@ -360,6 +371,17 @@ with tab4:
 
     @st.cache_data
     def load_all_laps(year, race):
+        race_clean = race.replace(' ', '_').replace('Grand_Prix', '').strip('_')
+        precomputed_path = f"precomputed_laps/{year}_{race_clean}_laps.csv"
+
+        if os.path.exists(precomputed_path):
+            all_laps = pd.read_csv(precomputed_path)
+            all_laps['LapTime'] = pd.to_timedelta(all_laps['LapTime'])
+            all_laps['Time'] = pd.to_timedelta(all_laps['Time'])
+            all_laps['PitInTime'] = pd.to_timedelta(all_laps['PitInTime'])
+            all_laps['PitOutTime'] = pd.to_timedelta(all_laps['PitOutTime'])
+            return fastf1.core.Laps(all_laps)
+
         session = fastf1.get_session(year, race, 'R')
         session.load(telemetry=False, weather=False, messages=False)
         return session.laps

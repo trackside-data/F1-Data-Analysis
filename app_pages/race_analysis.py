@@ -184,6 +184,18 @@ with tab3:
     driver2_options = [d for d in driver_list if d != driver]
 
     if len(driver2_options) > 0:
+        @st.cache_data
+        def get_top10_finishers(year, race):
+            session = fastf1.get_session(year, race, 'R')
+            session.load(laps=False, telemetry=False, weather=False, messages=False)
+            return session.results.sort_values('Position').head(10)['Abbreviation'].tolist()
+
+        try:
+            top10 = get_top10_finishers(year, race)
+            st.caption(f"For instant results, pick two drivers from the top 10 finishers: {', '.join(top10)}")
+        except Exception:
+            pass
+
         driver2 = st.selectbox("Compare against", driver2_options, key="race_driver2_select")
 
         def find_precomputed_file(year, race, driver1, driver2):

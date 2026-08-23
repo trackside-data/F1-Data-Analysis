@@ -4,9 +4,6 @@ import os
 import itertools
 
 fastf1.Cache.enable_cache('cache')
-os.makedirs('precomputed_data', exist_ok=True)
-
-years_to_process = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
 
 def get_minisector_comparison(tel1, driver1, tel2, driver2):
     num_minisectors = 25
@@ -28,7 +25,7 @@ def get_minisector_comparison(tel1, driver1, tel2, driver2):
     return tel1, comparison
 
 def process_race(year, race_name):
-    print(f"Processing {year} {race_name}...")
+    print(f"Reprocessing {year} {race_name}...")
     try:
         session = fastf1.get_session(year, race_name, 'R')
         session.load(telemetry=True, weather=False, messages=False)
@@ -36,10 +33,10 @@ def process_race(year, race_name):
         print(f"  Could not load session: {e}")
         return
 
-    top10 = session.results.sort_values('Position').head(10)['Abbreviation'].tolist()
+    podium = session.results.sort_values('Position').head(3)['Abbreviation'].tolist()
 
     telemetry_cache = {}
-    for drv in top10:
+    for drv in podium:
         try:
             lap = session.laps.pick_drivers(drv).pick_fastest()
             telemetry_cache[drv] = lap.get_telemetry().add_distance()
@@ -49,37 +46,35 @@ def process_race(year, race_name):
     race_clean = race_name.replace(' ', '_').replace('Grand_Prix', '').strip('_')
 
     for driver1, driver2 in itertools.combinations(telemetry_cache.keys(), 2):
-        base_name = f"precomputed_data/{year}_{race_clean}_{driver1}_vs_{driver2}"
-        reverse_base = f"precomputed_data/{year}_{race_clean}_{driver2}_vs_{driver1}"
-        if os.path.exists(f"{base_name}.csv") or os.path.exists(f"{reverse_base}.csv"):
-            continue
         try:
             tel1, comparison = get_minisector_comparison(
                 telemetry_cache[driver1], driver1,
                 telemetry_cache[driver2], driver2
             )
             output = tel1[['X', 'Y', 'Minisector', 'Fastest']].copy()
+            base_name = f"precomputed_data/{year}_{race_clean}_{driver1}_vs_{driver2}"
+
+            reverse_base = f"precomputed_data/{year}_{race_clean}_{driver2}_vs_{driver1}"
+            if os.path.exists(f"{reverse_base}.csv"):
+                print(f"  {driver1} vs {driver2} already covered (as {driver2} vs {driver1})")
+                continue
+            if os.path.exists(f"{base_name}.csv"):
+                print(f"  {driver1} vs {driver2} already covered")
+                continue
+
             output.to_csv(f"{base_name}.csv", index=False)
             comparison.to_csv(f"{base_name}_speeds.csv")
+            print(f"  Saved {driver1} vs {driver2}")
         except Exception as e:
             print(f"  Failed {driver1} vs {driver2}: {e}")
 
-    print(f"  Done: {len(telemetry_cache)} drivers, up to {len(list(itertools.combinations(telemetry_cache.keys(), 2)))} pairs")
+races_to_fill = [
+    (2024, 'Bahrain Grand Prix'),
+    (2024, 'Monaco Grand Prix'),
+    (2024, 'British Grand Prix'),
+    (2024, 'Italian Grand Prix'),
+    (2024, 'Abu Dhabi Grand Prix'),
+]
 
-for year in years_to_process:
-    try:
-        schedule = fastf1.get_event_schedule(year)
-        schedule = schedule[schedule['RoundNumber'] > 0]
-        race_list = schedule['EventName'].tolist()
-    except Exception as e:
-        print(f"Could not load schedule for {year}: {e}")
-        continue
-
-    for race_name in race_list:
-        race_clean = race_name.replace(' ', '_').replace('Grand_Prix', '').strip('_')
-        prefix = f"{year}_{race_clean}"
-        existing = [f for f in os.listdir('precomputed_data') if f.startswith(prefix) and not f.endswith('_speeds.csv')]
-        if len(existing) >= 40:
-            print(f"Skipping {year} {race_name}, already substantially covered ({len(existing)} pairs).")
-            continue
-        process_race(year, race_name)
+for year, race_name in races_to_fill:
+    process_race(year, race_name)

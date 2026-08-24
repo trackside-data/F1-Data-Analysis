@@ -3,8 +3,7 @@ import os
 
 fastf1.Cache.enable_cache('cache')
 
-years_to_check = [2021, 2024, 2025, 2026]
-
+years_to_check = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
 for year in years_to_check:
     print(f"\n=== {year} ===")
     try:

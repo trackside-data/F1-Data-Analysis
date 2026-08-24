@@ -5,3 +5,8 @@ backgroundColor="#15151E"
 secondaryBackgroundColor="#1F1F2B"
 textColor="#FFFFFF"
 font="sans serif"
+[server]
+fileWatcherType = "none"
+
+[runner]
+fastReruns = true

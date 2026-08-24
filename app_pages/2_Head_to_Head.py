@@ -1,11 +1,13 @@
 import streamlit as st
 from datetime import datetime
+import os
 import fastf1
 from fastf1.ergast import Ergast
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+os.makedirs('cache', exist_ok=True)
 fastf1.Cache.enable_cache('cache')
 
 st.title("Head to Head: Career Stats")
